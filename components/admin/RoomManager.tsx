@@ -50,7 +50,7 @@ export default function RoomManager({ placeId }: { placeId: string }) {
   }, [placeId]);
 
   async function fetchRooms() {
-    const supabase = createClient();
+    const supabase = createClient() as any;
     const { data } = await supabase
       .from('rooms')
       .select('*')
@@ -95,7 +95,7 @@ export default function RoomManager({ placeId }: { placeId: string }) {
     if (!form.name) { toast.error('Өрөөний нэр оруулна уу'); return; }
     if (!form.price_per_night) { toast.error('Үнэ оруулна уу'); return; }
     setSaving(true);
-    const supabase = createClient();
+    const supabase = createClient() as any;
     try {
       const payload = {
         place_id:       placeId,
@@ -129,7 +129,7 @@ export default function RoomManager({ placeId }: { placeId: string }) {
 
   async function deleteRoom(id: string) {
     if (!confirm('Өрөөг устгах уу?')) return;
-    const supabase = createClient();
+    const supabase = createClient() as any;
     await supabase.from('rooms').delete().eq('id', id);
     toast.success('Өрөө устгагдлаа');
     fetchRooms();

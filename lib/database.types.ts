@@ -116,6 +116,46 @@ export interface Database {
         Insert: { user_id: string; place_id: string };
         Update: never;
       };
+      rooms: {
+        Row: {
+          id:              string;
+          place_id:        string;
+          name:            string;
+          description:     string;
+          price_per_night: number;
+          capacity:        number;
+          quantity:        number;
+          cover_image:     string;
+          amenities:       string[];
+          is_available:    boolean;
+          created_at:      string;
+          updated_at:      string;
+        };
+        Insert: {
+          place_id:        string;
+          name:            string;
+          description?:    string;
+          price_per_night: number;
+          capacity?:       number;
+          quantity?:       number;
+          cover_image?:    string;
+          amenities?:      string[];
+          is_available?:   boolean;
+          updated_at?:     string;
+        };
+        Update: {
+          place_id?:       string;
+          name?:           string;
+          description?:    string;
+          price_per_night?: number;
+          capacity?:       number;
+          quantity?:       number;
+          cover_image?:    string;
+          amenities?:      string[];
+          is_available?:   boolean;
+          updated_at?:     string;
+        };
+      };
       site_stats: {
         Row: {
           key:        string;

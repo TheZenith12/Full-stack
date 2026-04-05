@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Menu, X, MapPin, Eye, Building2, Leaf, User, LogOut, ChevronDown } from 'lucide-react';
+import { Menu, X, MapPin, Eye, Building2, Leaf, User, LogOut, ChevronDown, Heart } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { SiteStats, Profile } from '@/lib/types';
 import { signOut } from '@/lib/actions/auth';
