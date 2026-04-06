@@ -1,58 +1,51 @@
-// app/admin/layout.tsx
+import { redirect } from 'next/navigation';
 import { createServerSupabaseClient } from '@/lib/supabase-server';
-import AdminSidebar from '@/components/admin/AdminSidebar';
+import AdminSidebarV2 from '@/components/admin/AdminSidebarV2';
 import type { Profile } from '@/lib/types';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createServerSupabaseClient();
 
-  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  // 1. Auth шалгах
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/auth/login?redirect=/admin');
 
-  if (!user) {
-    return (
-      <div style={{ padding: 40, fontFamily: 'monospace', background: '#0a1a10', color: '#fff', minHeight: '100vh' }}>
-        <h2>❌ User байхгүй байна</h2>
-        <p style={{ color: '#f87171' }}>{userError?.message ?? 'Session олдсонгүй'}</p>
-        <br />
-        <a href="/auth/login" style={{ color: '#4ade80' }}>→ Login хуудас руу очих</a>
-      </div>
-    );
-  }
-
-  const { data: profileData, error: profileError } = await supabase
+  // 2. Profile + role татах
+  const { data: profile } = await supabase
     .from('profiles')
     .select('*')
     .eq('id', user.id)
     .single();
 
-  if (!profileData) {
-    return (
-      <div style={{ padding: 40, fontFamily: 'monospace', background: '#0a1a10', color: '#fff', minHeight: '100vh' }}>
-        <h2>❌ Profile байхгүй байна</h2>
-        <p>User ID: {user.id}</p>
-        <p>Email: {user.email}</p>
-        <p style={{ color: '#f87171' }}>Profile алдаа: {profileError?.message}</p>
-      </div>
-    );
-  }
+  if (!profile) redirect('/auth/login');
 
-  const profile = profileData as Profile;
+  const p = profile as Profile;
 
-  if (!['super_admin', 'manager'].includes(profile.role)) {
-    return (
-      <div style={{ padding: 40, fontFamily: 'monospace', background: '#0a1a10', color: '#fff', minHeight: '100vh' }}>
-        <h2>❌ Эрх байхгүй</h2>
-        <p>Email: {user.email}</p>
-        <p>Одоогийн role: <strong style={{ color: '#fbbf24' }}>{profile.role}</strong></p>
-        <p style={{ color: '#f87171' }}>super_admin эрх шаардлагатай</p>
-      </div>
-    );
+  // 3. User эрхгүй — хаах
+  if (p.role === 'user') redirect('/');
+
+  // 4. Manager-ийн оноогдсон resort татах
+  let assignedResort: { id: string; name: string } | null = null;
+
+  if (p.role === 'manager') {
+    const { data: assignment } = await supabase
+      .from('manager_resorts')
+      .select('resort_id, resort:resorts(id, name)')
+      .eq('manager_id', user.id)
+      .single();
+
+    if (!assignment) {
+      // Resort оноогдоогүй manager — буцааж гаргах
+      redirect('/auth/login?error=no_resort_assigned');
+    }
+
+    assignedResort = (assignment.resort as any) as { id: string; name: string };
   }
 
   return (
-    <div className="flex min-h-screen bg-forest-950">
-      <AdminSidebar profile={profile} />
-      <main className="flex-1 ml-64 p-8 bg-gray-50 min-h-screen">
+    <div className="flex min-h-screen bg-gray-50">
+      <AdminSidebarV2 profile={p} assignedResort={assignedResort} />
+      <main className="flex-1 ml-64 min-h-screen">
         {children}
       </main>
     </div>
