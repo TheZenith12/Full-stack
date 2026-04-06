@@ -72,9 +72,9 @@ export default function HeroSection({ stats }: HeroSectionProps) {
           <h1 className="font-display text-5xl sm:text-6xl lg:text-7xl font-semibold text-white leading-[1.08] mb-6 animate-fade-up">
             Монголын <br />
             <span className="text-amber-300 italic">
-              Гайхалт
-            </span> Байгалийг <br />
-            Нээ
+              Гайхамшигт
+            </span> Байгальд <br />
+            Гаръя!
           </h1>
 
           <p className="text-forest-200 text-lg leading-relaxed mb-10 max-w-xl animate-fade-up delay-200">
