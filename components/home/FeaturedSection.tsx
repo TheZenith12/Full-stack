@@ -20,7 +20,7 @@ export default function FeaturedSection({ places }: FeaturedSectionProps) {
               Онцлох газрууд
             </span>
           </div>
-          <h2 className="section-title">Хамгийн их сонирхолтой</h2>
+          <h2 className="section-title">Хамгийн их сонирхсон</h2>
           <p className="text-forest-500 mt-2 font-body">
             Хэрэглэгчдийн хамгийн өндөр үнэлгээ авсан газрууд
           </p>
