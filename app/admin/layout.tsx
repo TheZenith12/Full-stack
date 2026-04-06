@@ -25,22 +25,30 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   if (p.role === 'user') redirect('/');
 
   // 4. Manager-ийн оноогдсон resort татах
-  let assignedResort: { id: string; name: string } | null = null;
+  // 4. Manager-ийн оноогдсон resort татах
+let assignedResort: { id: string; name: string } | null = null;
 
-  if (p.role === 'manager') {
-    const { data: assignment } = await supabase
-      .from('manager_resorts')
-      .select('resort_id, resort:resorts(id, name)')
-      .eq('manager_id', user.id)
-      .single();
+if (p.role === 'manager') {
+  type ManagerResortAssignment = {
+    resort_id: string;
+    resort: {
+      id: string;
+      name: string;
+    } | null;
+  };
 
-    if (!assignment) {
-      // Resort оноогдоогүй manager — буцааж гаргах
-      redirect('/auth/login?error=no_resort_assigned');
-    }
+  const { data: assignment } = await supabase
+    .from('manager_resorts')
+    .select('resort_id, resort:resorts(id, name)')
+    .eq('manager_id', user.id)
+    .single<ManagerResortAssignment>();
 
-    assignedResort = (assignment.resort as any) as { id: string; name: string };
+  if (!assignment?.resort) {
+    redirect('/auth/login?error=no_resort_assigned');
   }
+
+  assignedResort = assignment.resort;
+}
 
   return (
     <div className="flex min-h-screen bg-gray-50">

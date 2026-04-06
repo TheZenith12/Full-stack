@@ -30,6 +30,11 @@ export async function requireSuperAdmin() {
   return ctx;
 }
 
+// ── MANAGER HELPER ───────────────────────────────────────────
+type ManagerResortAssignment = {
+  resort_id: string;
+};
+
 export async function requireManager() {
   const ctx = await requireProfile();
   if (ctx.profile.role !== 'manager') redirect('/');
@@ -38,11 +43,11 @@ export async function requireManager() {
     .from('manager_resorts')
     .select('resort_id')
     .eq('manager_id', ctx.user.id)
-    .single();
+    .single<ManagerResortAssignment>();
 
   if (!assignment) redirect('/auth/login?error=no_resort_assigned');
 
-  return { ...ctx, resortId: assignment.resort_id as string };
+  return { ...ctx, resortId: assignment.resort_id };
 }
 
 // ── SUPER ADMIN ACTIONS ───────────────────────────────────────
@@ -53,7 +58,7 @@ export async function assignManagerAction(
 ): Promise<{ error: string | null }> {
   const { supabase } = await requireSuperAdmin();
   const { error } = await (supabase.rpc as any)('assign_manager', {
-    p_user_id:   userId,
+    p_user_id: userId,
     p_resort_id: resortId,
   });
   if (error) return { error: error.message };
@@ -124,7 +129,7 @@ export async function updateMyResortAction(
   }
   const { data, error } = await (supabase.rpc as any)('update_my_resort', {
     p_resort_id: resortId,
-    p_data:      formData,
+    p_data: formData,
   });
   if (error) return { data: null, error: error.message };
   return { data, error: null };
@@ -154,7 +159,7 @@ export async function getMyBookingsAction(params?: {
 
   if (params?.status) query = (query as any).eq('status', params.status);
 
-  const page     = params?.page ?? 1;
+  const page = params?.page ?? 1;
   const pageSize = params?.pageSize ?? 20;
   query = (query as any).range((page - 1) * pageSize, page * pageSize - 1);
 
@@ -172,15 +177,14 @@ export async function updateBookingStatusAction(
     .from('bookings')
     .select('id, resort_id')
     .eq('id', bookingId)
-    .single();
+    .single<{ id: string; resort_id: string }>();
 
-  if (!booking || (booking as any).resort_id !== resortId) {
+  if (!booking || booking.resort_id !== resortId) {
     return { error: 'Захиалга олдсонгүй эсвэл эрхгүй' };
   }
 
-  const { error } = await supabase
-    .from('bookings')
-    .update({ status, updated_at: new Date().toISOString() } as any)
+  const { error } = await (supabase.from('bookings') as any)
+    .update({ status, updated_at: new Date().toISOString() })
     .eq('id', bookingId);
 
   return { error: error?.message ?? null };
