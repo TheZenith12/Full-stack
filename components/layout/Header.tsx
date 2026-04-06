@@ -33,7 +33,7 @@ export default function Header({ stats, profile }: HeaderProps) {
           <div className="flex items-center gap-4">
             <span className="flex items-center gap-1.5">
               <Eye size={12} className="text-amber-400" />
-              <span>{stats.totalViews.toLocaleString(),} үзэлт</span>
+              <span>{stats.total_views.toLocaleString()} үзэлт</span>
             </span>
             <span className="flex items-center gap-1.5">
               <Building2 size={12} className="text-amber-400" />
