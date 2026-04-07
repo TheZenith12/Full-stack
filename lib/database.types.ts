@@ -165,10 +165,29 @@ export interface Database {
         Insert: { key: string; value?: number };
         Update: { value?: number; updated_at?: string };
       };
+      manager_resorts: {
+        Row: {
+          id:          string;
+          manager_id:  string;
+          resort_id:   string;
+          assigned_at: string;
+          assigned_by: string | null;
+        };
+        Insert: Omit<Database['public']['Tables']['manager_resorts']['Row'], 'id' | 'assigned_at'>;
+        Update: Partial<Database['public']['Tables']['manager_resorts']['Insert']>;
+      };
     };
     Functions: {
       increment_view_count: {
         Args: { place_id: string };
+        Returns: void;
+      };
+      assign_manager: {
+        Args: { p_user_id: string; p_resort_id: string };
+        Returns: void;
+      };
+      revoke_manager: {
+        Args: { p_user_id: string };
         Returns: void;
       };
     };
@@ -180,4 +199,5 @@ export interface Database {
       payment_method: 'stripe' | 'qpay';
     };
   };
-}
+};
+

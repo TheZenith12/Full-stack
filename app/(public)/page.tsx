@@ -7,8 +7,10 @@ import { getFeaturedPlaces, getSiteStats } from '@/lib/actions/places';
 export default async function HomePage({
   searchParams,
 }: {
-  searchParams: { type?: string; search?: string; province?: string; page?: string };
+  searchParams: Promise<{ type?: string; search?: string; province?: string; page?: string }>;
 }) {
+  const sp = await searchParams;
+
   const [featured, stats] = await Promise.all([
     getFeaturedPlaces(6),
     getSiteStats(),
@@ -19,7 +21,7 @@ export default async function HomePage({
       <HeroSection stats={stats} />
 
       {/* Featured places */}
-      {!searchParams.search && !searchParams.type && !searchParams.province && (
+      {!sp.search && !sp.type && !sp.province && (
         <Suspense fallback={<div className="h-64 shimmer-loading rounded-2xl mx-8 mt-12" />}>
           <FeaturedSection places={featured} />
         </Suspense>
@@ -27,7 +29,7 @@ export default async function HomePage({
 
       {/* Main places grid */}
       <Suspense fallback={<PlacesSkeleton />}>
-        <PlacesSection searchParams={searchParams} />
+        <PlacesSection searchParams={sp} />
       </Suspense>
     </>
   );

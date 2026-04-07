@@ -1,61 +1,57 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase-server';
-import { Database } from '@/lib/database.types';
-
-type UserRole = Database['public']['Enums']['user_role'];
-type ProfileRow = Database['public']['Tables']['profiles']['Row'];
-type ProfileUpdate = Database['public']['Tables']['profiles']['Update'];
 
 export async function POST(req: NextRequest) {
+  const supabase = await createServerSupabaseClient();
+
+  // Auth шалгах
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  // Super admin эсэхийг DATABASE-ААС шалгана
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single<{ role: string }>();
+
+  if (!profile || profile.role !== 'super_admin') {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  const { user_id, resort_id, action } = await req.json();
+
+  if (!user_id || !action) {
+    return NextResponse.json({ error: 'user_id, action шаардлагатай' }, { status: 400 });
+  }
+
   try {
-    const supabase = await createServerSupabaseClient();
+    if (action === 'assign') {
+      if (!resort_id) {
+        return NextResponse.json({ error: 'resort_id шаардлагатай' }, { status: 400 });
+      }
+      // Stored procedure дуудна — SECURITY DEFINER тул RLS bypass
+      const { error } = await supabase.rpc('assign_manager' as never, {
+        p_user_id:   user_id,
+        p_resort_id: resort_id,
+      } as never);
+      if (error) throw error;
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    } else if (action === 'revoke') {
+      if (user_id === user.id) {
+        return NextResponse.json({ error: 'Өөрийнхөө эрхийг буцааж авах боломжгүй' }, { status: 400 });
+      }
+      const { error } = await supabase.rpc('revoke_manager' as never, {
+        p_user_id: user_id,
+      } as never);
+      if (error) throw error;
+
+    } else {
+      return NextResponse.json({ error: 'Буруу action' }, { status: 400 });
     }
-
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single() as unknown as {
-        data: Pick<ProfileRow, 'role'> | null;
-        error: Error | null;
-      };
-
-    if (profileError) throw profileError;
-
-    if (!profile || profile.role !== 'super_admin') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
-    const { user_id, role }: { user_id: string; role: UserRole } = await req.json();
-
-    if (!user_id || !role) {
-      return NextResponse.json({ error: 'user_id болон role шаардлагатай' }, { status: 400 });
-    }
-
-    const validRoles: UserRole[] = ['user', 'manager', 'super_admin'];
-    if (!validRoles.includes(role)) {
-      return NextResponse.json({ error: 'Буруу role утга' }, { status: 400 });
-    }
-
-    const updateData: ProfileUpdate = {
-      role,
-      updated_at: new Date().toISOString(),
-    };
-
-    const { error: updateError } = await supabase
-      .from('profiles')
-      .update(updateData as never)
-      .eq('id', user_id);
-
-    if (updateError) throw updateError;
 
     return NextResponse.json({ success: true });
   } catch (err: any) {
-    console.error('Role update error:', err);
-    return NextResponse.json({ error: err.message || 'Server error' }, { status: 500 });
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

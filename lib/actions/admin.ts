@@ -1,191 +1,192 @@
 'use server';
 
 import { createServerSupabaseClient } from '@/lib/supabase-server';
+import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import type { Profile } from '@/lib/types';
 
-// ── HELPERS ──────────────────────────────────────────────────
-
-export async function requireAuth() {
+export async function requireSuperAdmin() {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect('/auth/login');
+  if (!user) throw new Error('Нэвтрэх шаардлагатай');
+  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
+  if (!profile || (profile as any).role !== 'super_admin') throw new Error('Эрх байхгүй');
   return { supabase, user };
 }
 
-export async function requireProfile() {
-  const { supabase, user } = await requireAuth();
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .single();
-  if (!profile) redirect('/auth/login');
-  return { supabase, user, profile: profile as Profile };
+async function requireManager() {
+  const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/auth/login');
+  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
+  if (!profile || (profile as any).role !== 'manager') redirect('/');
+  const { data: assignment } = await supabase
+    .from('manager_resorts').select('place_id').eq('manager_id', user.id).single();
+  if (!assignment) redirect('/auth/login?error=no_resort');
+  return { supabase, user, resortId: (assignment as any).place_id as string };
 }
 
-export async function requireSuperAdmin() {
-  const ctx = await requireProfile();
-  if (ctx.profile.role !== 'super_admin') redirect('/');
-  return ctx;
-}
-
-// ── MANAGER HELPER ───────────────────────────────────────────
-type ManagerResortAssignment = {
-  resort_id: string;
-};
-
-export async function requireManager() {
-  const ctx = await requireProfile();
-  if (ctx.profile.role !== 'manager') redirect('/');
-
-  const { data: assignment } = await ctx.supabase
-    .from('manager_resorts')
-    .select('resort_id')
-    .eq('manager_id', ctx.user.id)
-    .single<ManagerResortAssignment>();
-
-  if (!assignment) redirect('/auth/login?error=no_resort_assigned');
-
-  return { ...ctx, resortId: assignment.resort_id };
-}
-
-// ── SUPER ADMIN ACTIONS ───────────────────────────────────────
-
+// ── Super Admin: Manager-т resort оноох ──────────────────────────────────────
 export async function assignManagerAction(
-  userId: string,
-  resortId: string
+  userId: string, resortId: string
 ): Promise<{ error: string | null }> {
-  const { supabase } = await requireSuperAdmin();
-  const { error } = await (supabase.rpc as any)('assign_manager', {
-    p_user_id: userId,
-    p_resort_id: resortId,
-  });
-  if (error) return { error: error.message };
-  return { error: null };
-}
+  if (!userId || !resortId) return { error: 'userId болон resortId шаардлагатай' };
+  try {
+    const { supabase, user } = await requireSuperAdmin();
 
-export async function revokeManagerAction(
-  userId: string
-): Promise<{ error: string | null }> {
-  const { supabase } = await requireSuperAdmin();
-  const { error } = await (supabase.rpc as any)('revoke_manager', {
-    p_user_id: userId,
-  });
-  if (error) return { error: error.message };
-  return { error: null };
-}
+    // Хуучин assignment устгана
+    await (supabase as any).from('manager_resorts').delete().eq('manager_id', userId);
 
-export async function getAllUsersAction() {
-  const { supabase } = await requireSuperAdmin();
-  const { data, error } = await supabase
-    .from('profiles')
-    .select(`
-      *,
-      managed_resort:manager_resorts(
-        resort_id,
-        resort:resorts(id, name, is_published)
-      )
-    `)
-    .order('created_at', { ascending: false });
-  return { data, error: error?.message ?? null };
-}
+    // Шинэ assignment нэмнэ
+    const { error: assignErr } = await (supabase as any)
+      .from('manager_resorts')
+      .insert({ manager_id: userId, place_id: resortId, assigned_by: user.id });
+    if (assignErr) return { error: assignErr.message };
 
-export async function getAllResortsAction() {
-  const { supabase } = await requireSuperAdmin();
-  const { data, error } = await supabase
-    .from('resorts')
-    .select(`
-      *,
-      manager:manager_resorts(
-        manager_id,
-        profile:profiles(id, full_name, phone)
-      )
-    `)
-    .order('created_at', { ascending: false });
-  return { data, error: error?.message ?? null };
-}
+    // Role-ийг manager болгоно
+    const { error: roleErr } = await (supabase as any)
+      .from('profiles')
+      .update({ role: 'manager', updated_at: new Date().toISOString() })
+      .eq('id', userId);
+    if (roleErr) return { error: roleErr.message };
 
-// ── MANAGER ACTIONS ───────────────────────────────────────────
-
-export async function getMyResortAction() {
-  const { supabase, resortId } = await requireManager();
-  const { data, error } = await supabase
-    .from('resorts')
-    .select('*')
-    .eq('id', resortId)
-    .single();
-  if (!data || error) return { data: null, error: 'Амралтын газар олдсонгүй' };
-  return { data, error: null };
-}
-
-export async function updateMyResortAction(
-  resortId: string,
-  formData: Record<string, unknown>
-): Promise<{ data: unknown; error: string | null }> {
-  const { supabase, resortId: myResortId } = await requireManager();
-  if (resortId !== myResortId) {
-    return { data: null, error: 'Та энэ амралтын газрыг засах эрхгүй' };
+    revalidatePath('/admin/users');
+    return { error: null };
+  } catch (err: any) {
+    return { error: err.message };
   }
-  const { data, error } = await (supabase.rpc as any)('update_my_resort', {
-    p_resort_id: resortId,
-    p_data: formData,
-  });
-  if (error) return { data: null, error: error.message };
-  return { data, error: null };
 }
 
-export async function getMyRoomsAction() {
-  const { supabase, resortId } = await requireManager();
-  const { data, error } = await supabase
-    .from('rooms')
-    .select('*')
-    .eq('resort_id', resortId)
-    .order('price_per_night', { ascending: true });
-  return { data: data ?? [], error: error?.message ?? null };
+// ── Super Admin: Manager role буцаах ─────────────────────────────────────────
+export async function revokeManagerAction(userId: string): Promise<{ error: string | null }> {
+  if (!userId) return { error: 'userId шаардлагатай' };
+  try {
+    const { supabase, user } = await requireSuperAdmin();
+    if (userId === user.id) return { error: 'Өөрийнхөө эрхийг буцааж авах боломжгүй' };
+
+    await (supabase as any).from('manager_resorts').delete().eq('manager_id', userId);
+    await (supabase as any).from('profiles')
+      .update({ role: 'user', updated_at: new Date().toISOString() })
+      .eq('id', userId);
+
+    revalidatePath('/admin/users');
+    return { error: null };
+  } catch (err: any) {
+    return { error: err.message };
+  }
 }
 
-export async function getMyBookingsAction(params?: {
-  status?: string;
-  page?: number;
-  pageSize?: number;
-}) {
-  const { supabase, resortId } = await requireManager();
-  let query = supabase
-    .from('bookings')
-    .select('*, room:rooms(name)', { count: 'exact' })
-    .eq('resort_id', resortId)
-    .order('created_at', { ascending: false });
-
-  if (params?.status) query = (query as any).eq('status', params.status);
-
-  const page = params?.page ?? 1;
-  const pageSize = params?.pageSize ?? 20;
-  query = (query as any).range((page - 1) * pageSize, page * pageSize - 1);
-
-  const { data, count, error } = await query;
-  return { data: data ?? [], count: count ?? 0, error: error?.message ?? null };
+// ── Super Admin: Бүх хэрэглэгчид ─────────────────────────────────────────────
+export async function getAllUsersAction() {
+  try {
+    const { supabase } = await requireSuperAdmin();
+    const { data, error } = await (supabase as any)
+      .from('profiles')
+      .select('*, manager_resorts(place_id, places(id, name))')
+      .order('created_at', { ascending: false });
+    return { data: data ?? [], error: error?.message ?? null };
+  } catch (err: any) {
+    return { data: [], error: err.message };
+  }
 }
 
+// ── Super Admin: Бүх газрууд ──────────────────────────────────────────────────
+export async function getAllResortsForAssign() {
+  try {
+    const { supabase } = await requireSuperAdmin();
+    const { data, error } = await (supabase as any)
+      .from('places')
+      .select('id, name, province, cover_image')
+      .eq('type', 'resort')
+      .order('name');
+    return { data: data ?? [], error: error?.message ?? null };
+  } catch (err: any) {
+    return { data: [], error: err.message };
+  }
+}
+
+// ── Manager: Өөрийн resort авах ───────────────────────────────────────────────
+export async function getMyResortAction() {
+  try {
+    const { supabase, resortId } = await requireManager();
+    const { data, error } = await (supabase as any)
+      .from('places').select('*').eq('id', resortId).single();
+    return { data: data ?? null, error: error?.message ?? null };
+  } catch (err: any) {
+    return { data: null, error: err.message };
+  }
+}
+
+// ── Manager: Өөрийн resort засах ─────────────────────────────────────────────
+export async function updateMyResortAction(
+  _ignored: string,  // Frontend-ийн resort_id-г IGNORE хийнэ
+  formData: Record<string, unknown>
+): Promise<{ error: string | null }> {
+  try {
+    const { supabase, resortId } = await requireManager();
+
+    const SAFE_FIELDS = [
+      'name', 'description', 'short_desc', 'phone', 'email',
+      'website', 'address', 'province', 'district',
+      'latitude', 'longitude', 'price_per_night',
+      'cover_image', 'images', 'video_url',
+    ];
+
+    const safe: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    for (const key of SAFE_FIELDS) {
+      if (key in formData) safe[key] = formData[key];
+    }
+
+    const { error } = await (supabase as any)
+      .from('places').update(safe).eq('id', resortId);  // DB-аас авсан ID
+
+    if (error) return { error: error.message };
+    revalidatePath('/admin/my-resort');
+    return { error: null };
+  } catch (err: any) {
+    return { error: err.message };
+  }
+}
+
+// ── Manager: Өөрийн resort-ын захиалгууд ─────────────────────────────────────
+export async function getMyBookingsAction(page = 1, pageSize = 20) {
+  try {
+    const { supabase, resortId } = await requireManager();
+    const from = (page - 1) * pageSize;
+    const { data, count, error } = await (supabase as any)
+      .from('bookings')
+      .select('*', { count: 'exact' })
+      .eq('place_id', resortId)  // DB-аас авсан resort ID
+      .order('created_at', { ascending: false })
+      .range(from, from + pageSize - 1);
+    return { data: data ?? [], count: count ?? 0, error: error?.message ?? null };
+  } catch (err: any) {
+    return { data: [], count: 0, error: err.message };
+  }
+}
+
+// ── Manager: Захиалгын статус өөрчлөх ────────────────────────────────────────
 export async function updateBookingStatusAction(
   bookingId: string,
   status: 'confirmed' | 'cancelled' | 'completed'
 ): Promise<{ error: string | null }> {
-  const { supabase, resortId } = await requireManager();
+  try {
+    const { supabase, resortId } = await requireManager();
 
-  const { data: booking } = await supabase
-    .from('bookings')
-    .select('id, resort_id')
-    .eq('id', bookingId)
-    .single<{ id: string; resort_id: string }>();
+    // Захиалга манай resort-ынх эсэхийг ЗААВАЛ шалгана
+    const { data: booking } = await (supabase as any)
+      .from('bookings').select('place_id').eq('id', bookingId).single();
 
-  if (!booking || booking.resort_id !== resortId) {
-    return { error: 'Захиалга олдсонгүй эсвэл эрхгүй' };
+    if (!booking || booking.place_id !== resortId) {
+      return { error: 'Эрхгүй эсвэл захиалга олдсонгүй' };
+    }
+
+    const { error } = await (supabase as any)
+      .from('bookings')
+      .update({ status, updated_at: new Date().toISOString() })
+      .eq('id', bookingId);
+
+    return { error: error?.message ?? null };
+  } catch (err: any) {
+    return { error: err.message };
   }
-
-  const { error } = await (supabase.from('bookings') as any)
-    .update({ status, updated_at: new Date().toISOString() })
-    .eq('id', bookingId);
-
-  return { error: error?.message ?? null };
 }

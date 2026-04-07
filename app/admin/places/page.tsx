@@ -11,8 +11,9 @@ type PlaceRow = Database['public']['Tables']['places']['Row'];
 export default async function AdminPlacesPage({
   searchParams,
 }: {
-  searchParams: { page?: string; type?: string; search?: string };
+  searchParams: Promise<{ page?: string; type?: string; search?: string }>;
 }) {
+  const sp = await searchParams;
   const supabase = await createServerSupabaseClient();
 
   let query = supabase
@@ -20,11 +21,11 @@ export default async function AdminPlacesPage({
     .select('*', { count: 'exact' })
     .order('created_at', { ascending: false });
 
-  if (searchParams.type)   query = query.eq('type', searchParams.type as any);
-  if (searchParams.search) query = query.ilike('name', `%${searchParams.search}%`);
+  if (sp.type)   query = query.eq('type', sp.type as any);
+  if (sp.search) query = query.ilike('name', `%${sp.search}%`);
 
   const { data, count, error } = await query;
-  const places = (data ?? []) as PlaceRow[]; // ✅
+  const places = (data ?? []) as PlaceRow[];
 
   return (
     <div>
@@ -41,9 +42,9 @@ export default async function AdminPlacesPage({
       {/* Filters */}
       <div className="bg-white rounded-2xl border border-gray-100 p-4 mb-6 flex gap-3">
         <form className="flex gap-3 flex-1">
-          <input name="search" defaultValue={searchParams.search}
+          <input name="search" defaultValue={sp.search}
             placeholder="Нэрээр хайх..." className="input-field flex-1 text-sm py-2" />
-          <select name="type" defaultValue={searchParams.type ?? ''} className="input-field w-44 text-sm py-2">
+          <select name="type" defaultValue={sp.type ?? ''} className="input-field w-44 text-sm py-2">
             <option value="">Бүгд</option>
             <option value="resort">Амралтын газар</option>
             <option value="nature">Байгалийн газар</option>

@@ -1,16 +1,48 @@
-import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
-import { getSiteStats } from '@/lib/actions/places';
-import { getCurrentProfile } from '@/lib/actions/auth';
+import Header from '@/components/layout/Header';
+import { createServerSupabaseClient } from '@/lib/supabase-server';
+import type { SiteStats } from '@/lib/types';
 
 export default async function PublicLayout({ children }: { children: React.ReactNode }) {
-  const [stats, profile] = await Promise.all([getSiteStats(), getCurrentProfile()]);
+  const supabase = await createServerSupabaseClient();
+
+  // Stats татах
+  const [statsRes, resortsRes, natureRes] = await Promise.all([
+    supabase.from('site_stats').select('key, value'),
+    supabase.from('places').select('id', { count: 'exact' }).eq('type', 'resort').eq('is_published', true),
+    supabase.from('places').select('id', { count: 'exact' }).eq('type', 'nature').eq('is_published', true),
+  ]);
+
+  const statsMap = Object.fromEntries(
+    ((statsRes.data ?? []) as Array<{ key: string; value: string }>).map((s) => [s.key, s.value])
+  );
+
+  const stats: SiteStats = {
+    total_views: Number(statsMap['total_views'] ?? 0),
+    total_resorts: resortsRes.count ?? 0,
+    total_nature: natureRes.count ?? 0,
+    total_places: (resortsRes.count ?? 0) + (natureRes.count ?? 0),
+    total_users: 0,
+    total_bookings: 0
+  };
+
+  // Profile татах (нэвтрэсэн бол)
+  const { data: { user } } = await supabase.auth.getUser();
+  let profile = null;
+  if (user) {
+    const { data } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .single();
+    profile = data;
+  }
 
   return (
-    <div className="flex flex-col min-h-dvh">
+    <>
       <Header stats={stats} profile={profile} />
-      <main className="flex-1">{children}</main>
+      <main>{children}</main>
       <Footer />
-    </div>
+    </>
   );
 }
