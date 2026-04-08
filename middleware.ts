@@ -26,19 +26,39 @@ export async function middleware(req: NextRequest) {
   } = await supabase.auth.getSession();
 
   const isAdminPath = req.nextUrl.pathname.startsWith('/admin');
+  const isLoginPath = req.nextUrl.pathname === '/auth/login';
 
-  // Хэрэв session байхгүй бол login руу
+  // Session байхгүй бол /admin руу орохыг оролдвол login руу шидэх
   if (!session && isAdminPath) {
     const redirectUrl = req.nextUrl.clone();
     redirectUrl.pathname = '/auth/login';
     return NextResponse.redirect(redirectUrl);
   }
 
-  // Хэрэв session байгаа ч admin биш бол /user руу
-  if (session && !isAdminPath && session.user.user_metadata.role === 'admin') {
-    const redirectUrl = req.nextUrl.clone();
-    redirectUrl.pathname = '/admin';
-    return NextResponse.redirect(redirectUrl);
+  // Session байгаа үед role шалгах
+  if (session) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', session.user.id)
+      .single();
+
+    const isAdmin =
+      profile?.role === 'super_admin' || profile?.role === 'manager';
+
+    // Admin хэрэглэгч login хуудас руу орвол /admin руу шидэх
+    if (isLoginPath && isAdmin) {
+      const redirectUrl = req.nextUrl.clone();
+      redirectUrl.pathname = '/admin';
+      return NextResponse.redirect(redirectUrl);
+    }
+
+    // Admin биш хэрэглэгч /admin руу орвол login руу шидэх
+    if (isAdminPath && !isAdmin) {
+      const redirectUrl = req.nextUrl.clone();
+      redirectUrl.pathname = '/auth/login';
+      return NextResponse.redirect(redirectUrl);
+    }
   }
 
   return res;

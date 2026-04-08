@@ -26,12 +26,18 @@ export default function AuthPage({ mode = 'login' }: { mode?: Mode }) {
         if (error) throw error;
         if (data.session) {
           toast.success('Амжилттай нэвтэрлээ!');
-          const { data: profile } = await supabase
+          const { data: profile, error: profileError } = await supabase
             .from('profiles')
             .select('role')
             .eq('id', data.session.user.id)
-            .single() as unknown as { data: { role: string } | null; error: any }; // ✅
-          const isAdmin = profile?.role === 'super_admin' || profile?.role === 'manager'; // ✅
+            .single() as unknown as { data: { role: string } | null; error: any };
+          
+          console.log('🔍 User ID:', data.session.user.id);
+          console.log('🔍 Profile:', profile);
+          console.log('🔍 Profile Error:', profileError);
+
+          const isAdmin = profile?.role === 'super_admin' || profile?.role === 'manager';
+          console.log('🔍 isAdmin:', isAdmin, '| role:', profile?.role);
           window.location.href = isAdmin ? '/admin' : '/';
         }
       } else {
